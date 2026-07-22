@@ -1,8 +1,8 @@
 # mock-humanoid 内置 Realtime tools 契约
 
-状态：Draft  
-版本：0.6  
-日期：2026-07-21
+状态：Draft
+版本：0.7
+日期：2026-07-22
 
 ## 1. 目的与边界
 
@@ -18,7 +18,7 @@
 - `code` 固定为空字符串；`language` 和 `platform` 仅用于满足当前 Stardust tool 类型，不代表服务端执行代码。
 - tool 参数不接受未声明字段。
 - 每个 tool 根级的 `required` 是当前 `ticos-realtime-api` SDK 使用的 Stardust 定义格式。除 `navigate_to` 的 `oneOf` 分支外，本契约不在 `parameters` 内重复该字段；本地 handler 仍必须按根级 `required` 和第 5 节规则完整校验。
-- 参数名称是稳定协议；人物、物体、地点、路线、动作和表情的可用名称见 [内置演示场景契约](./demo-scene.md)。
+- 参数名称是稳定协议；人物、物体、内置地点、内置路线、动作和表情的可用名称见 [内置演示场景契约](./demo-scene.md)，页面内创建的自定义地点和路线按当前世界状态动态扩展名称域。
 
 ## 3. 最终 session 中的完整 tools 定义
 
@@ -35,7 +35,7 @@
       "properties": {
         "location": {
           "type": "string",
-          "description": "内置地点的名称或别名，例如厨房；使用 location 时不得同时提供 x、y 或 theta。"
+          "description": "当前页面可用地点的名称，例如内置地点“厨房”或用户创建的位置点；使用 location 时不得同时提供 x、y 或 theta。"
         },
         "x": {
           "type": "number",
@@ -79,13 +79,13 @@
   {
     "type": "function",
     "name": "start_patrol",
-    "description": "让模拟人形机器人按指定的内置预设路线循环巡逻。",
+    "description": "让模拟人形机器人按当前页面中的指定路线循环巡逻。",
     "parameters": {
       "type": "object",
       "properties": {
         "route": {
           "type": "string",
-          "description": "内置巡逻路线名称或别名，例如日常巡视。"
+          "description": "当前页面可用巡逻路线名称，例如内置路线“日常巡视”或用户创建的路线。"
         }
       },
       "additionalProperties": false

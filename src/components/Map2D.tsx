@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, LocateFixed } from 'lucide-react';
-import { LOCATIONS, MAP, OBSTACLES } from '../data/scene';
+import { MAP, OBSTACLES } from '../data/scene';
 import type { WorldState } from '../types';
 
 export function Map2D({ world }: { world: WorldState }) {
@@ -28,8 +28,8 @@ export function Map2D({ world }: { world: WorldState }) {
         const gradient = context.createLinearGradient(x, y, x, y + height); gradient.addColorStop(0, '#26394a'); gradient.addColorStop(1, '#172636'); context.fillStyle = gradient; context.fillRect(x, y, width, height); context.strokeStyle = '#526f84'; context.strokeRect(x, y, width, height);
         if (scale > 35) { context.fillStyle = '#9ab1c3'; context.font = '10px system-ui'; context.fillText(obstacle.name, x + 5, y + 14); }
       }
-      for (const location of LOCATIONS) {
-        const [x, y] = xy(location.x, location.y); context.fillStyle = '#48b9ff'; context.beginPath(); context.arc(x, y, 4, 0, Math.PI * 2); context.fill();
+      for (const location of world.locations) {
+        const [x, y] = xy(location.x, location.y); context.fillStyle = location.builtin ? '#48b9ff' : '#2dd4bf'; context.beginPath(); context.arc(x, y, location.builtin ? 4 : 5, 0, Math.PI * 2); context.fill();
         if (scale > 28) { context.fillStyle = '#b9dbf2'; context.font = '11px system-ui'; context.fillText(location.name, x + 7, y - 6); }
       }
       for (const job of world.jobs) {

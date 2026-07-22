@@ -5,6 +5,8 @@
 - [mock-humanoid 需求文档](./requirements.md)：定义产品范围、页面布局、Stardust Realtime 接入、本地机器人技能、模拟世界、状态模型和验收标准。
 - [内置 Realtime tools 契约](./tool-schemas.md)：8 个本地 function tools 的完整 Stardust 定义、参数约束和运行时合并规则。
 - [内置演示场景契约](./demo-scene.md)：初始地点、人物、物体、放置面、巡逻路线、动作与表情别名。
+- [场景控制面板布局](./control-panel.md)：位置点、路线编排和手动执行的页面结构与交互。
+- [语音输入布局与行为](./voice-input.md)：Server VAD、Push to Talk 与浏览器 3A 的交互和协议契约。
 
 ## 推荐阅读顺序
 
@@ -18,17 +20,17 @@
 
 | 产品主契约 | 场景与资产契约 | Tools 契约 | 兼容状态 |
 |---|---|---|---|
-| `requirements 0.7` | `demo-scene 0.7` | `tool-schemas 0.6` | 当前唯一支持组合 |
+| `requirements 0.10` | `demo-scene 0.8` | `tool-schemas 0.7` | 当前唯一支持组合 |
 
-本组合相对上一版主要补充：重连状态保持、音频格式、session tools 清空语义、交接人物丢失结果、人物持物状态和确定性脸部灯波形。
+本组合相对上一版主要修复：按 Hetu Playground 对齐 Server VAD 连续对话与 Client VAD / Push to Talk 双模式，并支持可配置的浏览器 3A。
 
 ## 已落地的契约检查
 
 - `tests/contracts/aliases/`：动作与表情别名的契约测试。
 - `tests/geometry.test.ts`：按 `0.05m` 栅格和 `0.40m` 障碍膨胀验证巡逻闭环、固定地点连通性、视线边界和 A* 循环内规划超时。
 - `tests/assets.test.ts`：校验 G1 清单、许可证、URDF 引用和文件 SHA-256。
-- `tests/realtime.test.ts`：覆盖连接状态机、`session.updated` 确认、异常断线、function call 去重及缓存上限。
-- `tests/audio.test.ts`：验证麦克风使用零增益处理链，不把采集音频回放到扬声器。
+- `tests/realtime.test.ts`：覆盖连接状态机、`session.updated` 确认、异常断线、语音提交、转写显示、function call 去重及缓存上限。
+- `tests/audio.test.ts`：验证 AudioWorklet、浏览器 3A、Push to Talk 暂停/恢复和零增益防回放链路。
 - `tests/engine.test.ts`：覆盖参数边界、导航成功/规划超时、持续任务取消、交接确认、高亮过期与空闲 tick 发布行为。
 
 ## G1 资产交付状态
@@ -40,6 +42,8 @@
 
 | 文档 | 状态 | 最近更新 |
 |---|---|---|
-| [requirements.md](./requirements.md) | Draft 0.7 | 2026-07-21 |
-| [tool-schemas.md](./tool-schemas.md) | Draft 0.6 | 2026-07-21 |
-| [demo-scene.md](./demo-scene.md) | Draft 0.7 | 2026-07-21 |
+| [requirements.md](./requirements.md) | Draft 0.10 | 2026-07-22 |
+| [tool-schemas.md](./tool-schemas.md) | Draft 0.7 | 2026-07-22 |
+| [demo-scene.md](./demo-scene.md) | Draft 0.8 | 2026-07-22 |
+| [control-panel.md](./control-panel.md) | Draft 0.1 | 2026-07-22 |
+| [voice-input.md](./voice-input.md) | Draft 0.1 | 2026-07-22 |

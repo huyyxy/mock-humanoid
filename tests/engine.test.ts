@@ -84,4 +84,38 @@ describe('simulation engine contract', () => {
     expect(result).toEqual(expect.objectContaining({ status: 'failed', error_code: 'planning_timeout' }));
     expect(engine.getSnapshot().jobs[0]).toEqual(expect.objectContaining({ status: 'failed', errorCode: 'planning_timeout' }));
   });
+
+  it('creates in-memory locations and makes them available to navigate_to', async () => {
+    const location = engine.addLocation({ name: '讲解点', x: 2, y: 2, theta: 0 });
+    expect(engine.getSnapshot().locations).toContainEqual(location);
+    const resultPromise = engine.invokeTool('navigate_to', { location: '讲解点' });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await resultPromise).status).toBe('succeeded');
+    expect(engine.getSnapshot().robot.pose).toEqual({ x: 2, y: 2, theta: 0 });
+  });
+
+  it('validates custom locations and protects built-in locations', () => {
+    expect(() => engine.addLocation({ name: '前台', x: 3, y: 3, theta: 0 })).toThrow('已存在');
+    expect(() => engine.addLocation({ name: '障碍点', x: 6, y: 3, theta: 0 })).toThrow('障碍物');
+    expect(() => engine.addLocation({ name: '坏坐标', x: Number.NaN, y: 3, theta: 0 })).toThrow('有限数');
+    expect(() => engine.removeLocation('front-desk')).toThrow('内置位置点不可删除');
+  });
+
+  it('creates ordered routes, executes them through start_patrol, and enforces references', async () => {
+    const location = engine.addLocation({ name: '讲解点', x: 2, y: 2, theta: 0 });
+    const route = engine.addRoute({ name: '讲解路线', waypointIds: ['front-desk', location.id] });
+    const result = await engine.invokeTool('start_patrol', { route: '讲解路线' });
+    expect(result).toEqual(expect.objectContaining({ status: 'running', data: { route: '讲解路线', waypoint_count: 2 } }));
+    expect(() => engine.removeLocation(location.id)).toThrow('路线“讲解路线”引用');
+    engine.removeRoute(route.id); engine.removeLocation(location.id);
+    expect(engine.getSnapshot().locations.some((item) => item.id === location.id)).toBe(false);
+    engine.stopCurrent();
+  });
+
+  it('clears all custom locations and routes on world reset', () => {
+    const location = engine.addLocation({ name: '临时点', x: 2, y: 2, theta: 0 }); engine.addRoute({ name: '临时路线', waypointIds: ['front-desk', location.id] });
+    engine.reset();
+    expect(engine.getSnapshot().locations.every((item) => item.builtin)).toBe(true);
+    expect(engine.getSnapshot().routes.every((item) => item.builtin)).toBe(true);
+  });
 });

@@ -31,14 +31,15 @@ function createHarness() {
   const statuses: Array<{ status: ConnectionStatus; error?: string }> = [];
   const events: any[] = [];
   const onTool = vi.fn(async (name): Promise<ToolOutput> => ({ ok: true, status: 'succeeded', tool: name, job_id: 'job_test', error_code: null, message: 'done', data: {} }));
+  const onMessage = vi.fn();
   const client = new StardustRealtimeClient(config, {
     onStatus: (status, error) => statuses.push({ status, error }),
     onEvent: (event) => events.push(event),
-    onMessage: vi.fn(),
+    onMessage,
     onTool,
     onAudioLevel: vi.fn(),
   });
-  return { client, statuses, events, onTool };
+  return { client, statuses, events, onTool, onMessage };
 }
 
 async function connect(client: StardustRealtimeClient) {
@@ -92,6 +93,18 @@ describe('StardustRealtimeClient', () => {
     socket.receive({ type: 'response.output_item.done', item: { id: 'item-2', type: 'function_call', name: 'custom_tool', call_id: 'call-2', arguments: '{}' } });
     await vi.waitFor(() => expect(socket.sent.filter((event) => event.item?.type === 'function_call_output')).toHaveLength(1));
     expect(onTool).toHaveBeenCalledTimes(1);
+    client.disconnect();
+  });
+
+  it('commits Push to Talk exactly once and renders its transcript', async () => {
+    const { client, onMessage } = createHarness();
+    const promise = client.connect({ model: { tools: [] }, hearing: { input_audio_format: 'pcm16', turn_detection: null } });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1)); const socket = FakeWebSocket.instances[0];
+    await vi.waitFor(() => expect(socket.sent.some((event) => event.type === 'session.update')).toBe(true)); socket.receive({ type: 'session.updated', session: {} }); await promise;
+    client.beginPushToTalk(); Object.defineProperty(client.microphone, 'capturedAudio', { value: true }); expect(client.finishPushToTalk()).toBe(true);
+    expect(socket.sent.slice(-4).map((event) => event.type)).toEqual(['response.cancel', 'input_audio_buffer.clear', 'input_audio_buffer.commit', 'response.create']);
+    socket.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'voice-1', transcript: '你好机器人' });
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'voice-1', role: 'user', text: '你好机器人' }));
     client.disconnect();
   });
 

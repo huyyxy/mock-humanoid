@@ -79,6 +79,13 @@ export class StardustRealtimeClient {
 
   cancelResponse() { this.player.stop(); this.send('response.cancel', {}); }
 
+  beginPushToTalk() { this.player.stop(); this.send('response.cancel', {}); return this.send('input_audio_buffer.clear', {}); }
+
+  finishPushToTalk() {
+    if (!this.microphone.capturedAudio) { this.callbacks.onEvent({ level: 'warning', type: 'push_to_talk_empty', summary: '未采集到语音，本次没有发送' }); return false; }
+    this.send('input_audio_buffer.commit', {}); this.send('response.create', {}); return true;
+  }
+
   sendTaskEvent(event: Record<string, unknown>) { this.send('conversation.item.create', { item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: JSON.stringify(event) }] } }); }
 
   private send(type: string, payload: Record<string, unknown>) { if (this.socket?.readyState !== WebSocket.OPEN) return false; this.socket.send(JSON.stringify({ event_id: crypto.randomUUID(), type, ...payload })); return true; }
@@ -94,6 +101,9 @@ export class StardustRealtimeClient {
     if (type === 'response.output_item.done' && anyEvent.item?.type === 'function_call') void this.handleFunctionCall(anyEvent.item, anyEvent.response_id);
     if (type === 'conversation.item.created' && anyEvent.item?.type === 'message') {
       const text = decodeContent(anyEvent.item); if (text) this.callbacks.onMessage({ id: anyEvent.item.id || crypto.randomUUID(), role: anyEvent.item.role === 'user' ? 'user' : anyEvent.item.role === 'system' ? 'system' : 'assistant', text, timestamp: Date.now() });
+    }
+    if (type === 'conversation.item.input_audio_transcription.completed' && typeof anyEvent.transcript === 'string' && anyEvent.transcript.trim()) {
+      this.callbacks.onMessage({ id: anyEvent.item_id || crypto.randomUUID(), role: 'user', text: anyEvent.transcript.trim(), timestamp: Date.now() });
     }
     if (['response.output_text.delta', 'response.text.delta', 'response.audio_transcript.delta'].includes(type) && typeof anyEvent.delta === 'string') {
       const id = anyEvent.item_id || anyEvent.response_id || 'assistant-stream'; const text = (this.textBuffers.get(id) || '') + anyEvent.delta; this.textBuffers.set(id, text); this.callbacks.onMessage({ id, role: 'assistant', text, timestamp: Date.now(), streaming: true });

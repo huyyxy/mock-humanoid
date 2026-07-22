@@ -13,6 +13,8 @@ export type JobStatus = 'running' | 'awaiting_confirmation' | 'succeeded' | 'fai
 
 export interface Pose2D { x: number; y: number; theta: number }
 export interface Point3D { x: number; y: number; z: number }
+export interface LocationPoint extends Pose2D { id: string; name: string; aliases: string[]; builtin: boolean }
+export interface RouteDefinition { id: string; name: string; aliases: string[]; waypointIds: string[]; builtin: boolean }
 
 export interface FaceLightState {
   color: string;
@@ -77,6 +79,8 @@ export interface WorldState {
   robot: RobotState;
   people: PersonState[];
   objects: ObjectState[];
+  locations: LocationPoint[];
+  routes: RouteDefinition[];
   jobs: JobState[];
   simulationTimeMs: number;
   revision: number;

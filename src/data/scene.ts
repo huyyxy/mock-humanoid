@@ -1,4 +1,4 @@
-import type { FaceLightState, ObjectState, PersonState, Point3D, Pose2D, WorldState } from '../types';
+import type { FaceLightState, LocationPoint, ObjectState, PersonState, Point3D, Pose2D, RouteDefinition, WorldState } from '../types';
 
 export const MAP = { width: 12, height: 8, resolution: 0.05, inflation: 0.4 } as const;
 
@@ -12,14 +12,13 @@ export const OBSTACLES: Obstacle[] = [
   { id: 'meeting-table-body', name: '会议桌', minX: 8.2, maxX: 10.4, minY: 5.7, maxY: 6.4, height: 0.78 },
 ];
 
-export interface NamedPose extends Pose2D { id: string; name: string; aliases: string[] }
-export const LOCATIONS: NamedPose[] = [
-  { id: 'front-desk', name: '前台', aliases: ['接待台', '前台区域'], x: 1.5, y: 2, theta: -1.5708 },
-  { id: 'kitchen', name: '厨房', aliases: ['茶水间', '餐饮区'], x: 9.8, y: 1.45, theta: -1.5708 },
-  { id: 'meeting-room', name: '会议室', aliases: ['会议区'], x: 9.3, y: 6.9, theta: -1.5708 },
-  { id: 'meeting-room-entrance', name: '会议室入口', aliases: ['会议室外', '会议室门口'], x: 7.7, y: 5.2, theta: 0 },
-  { id: 'showcase', name: '展示区', aliases: ['展厅', '产品展示区'], x: 4.75, y: 5.75, theta: 1.5708 },
-  { id: 'charging-dock', name: '充电位', aliases: ['充电桩', '回充点'], x: 1, y: 6.5, theta: 3.1416 },
+export const LOCATIONS: LocationPoint[] = [
+  { id: 'front-desk', name: '前台', aliases: ['接待台', '前台区域'], x: 1.5, y: 2, theta: -1.5708, builtin: true },
+  { id: 'kitchen', name: '厨房', aliases: ['茶水间', '餐饮区'], x: 9.8, y: 1.45, theta: -1.5708, builtin: true },
+  { id: 'meeting-room', name: '会议室', aliases: ['会议区'], x: 9.3, y: 6.9, theta: -1.5708, builtin: true },
+  { id: 'meeting-room-entrance', name: '会议室入口', aliases: ['会议室外', '会议室门口'], x: 7.7, y: 5.2, theta: 0, builtin: true },
+  { id: 'showcase', name: '展示区', aliases: ['展厅', '产品展示区'], x: 4.75, y: 5.75, theta: 1.5708, builtin: true },
+  { id: 'charging-dock', name: '充电位', aliases: ['充电桩', '回充点'], x: 1, y: 6.5, theta: 3.1416, builtin: true },
 ];
 
 export interface Placement { id: string; name: string; aliases: string[]; navPose: Pose2D; objectPose: Point3D }
@@ -40,6 +39,7 @@ export const SEARCH_REGIONS = [
 ] as const;
 
 export const PATROL_ROUTE = ['front-desk', 'showcase', 'meeting-room-entrance', 'kitchen'] as const;
+export const ROUTES: RouteDefinition[] = [{ id: 'daily-patrol', name: '日常巡视', aliases: ['日常巡逻', '例行巡视'], waypointIds: [...PATROL_ROUTE], builtin: true }];
 
 export const ACTIONS: Record<string, { canonical: string; durationMs: number }> = Object.fromEntries(
   [
@@ -89,7 +89,7 @@ export function createInitialWorld(): WorldState {
   ];
   return {
     robot: { pose: { x: 1.5, y: 2, theta: -1.5708 }, expression: '中性', faceLight: { ...EXPRESSION_CANONICAL.中性 }, action: null, leftHand: 'welcome-card', rightHand: null },
-    people, objects, jobs: [], simulationTimeMs: 0, revision: 0,
+    people, objects, locations: LOCATIONS.map((item) => ({ ...item, aliases: [...item.aliases] })), routes: ROUTES.map((item) => ({ ...item, aliases: [...item.aliases], waypointIds: [...item.waypointIds] })), jobs: [], simulationTimeMs: 0, revision: 0,
   };
 }
 

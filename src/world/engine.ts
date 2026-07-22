@@ -1,6 +1,6 @@
-import { ACTIONS, EXPRESSIONS, LOCATIONS, PATROL_ROUTE, PLACEMENTS, SEARCH_REGIONS, createInitialWorld, matchName, matchObject } from '../data/scene';
-import { isVisible, planPath, PlanningTimeoutError } from './geometry';
-import type { AppEvent, JobState, Pose2D, ResourceName, ToolName, ToolOutput, WorldState } from '../types';
+import { ACTIONS, EXPRESSIONS, PLACEMENTS, SEARCH_REGIONS, createInitialWorld, matchName, matchObject } from '../data/scene';
+import { isVisible, planPath, PlanningTimeoutError, pointBlocked } from './geometry';
+import type { AppEvent, JobState, LocationPoint, Pose2D, ResourceName, RouteDefinition, ToolName, ToolOutput, WorldState } from '../types';
 
 type EventSink = (event: Omit<AppEvent, 'id' | 'timestamp'>) => void;
 type TaskEventSink = (event: { type: 'mock_humanoid.task_event'; job_id: string; tool: ToolName; status: 'failed' | 'cancelled'; error_code: string; message: string }) => void;
@@ -24,6 +24,7 @@ export class SimulationEngine {
   private continuous = new Set<string>();
   private handoverDecisions = new Map<string, (accepted: boolean) => void>();
   private counter = 0;
+  private sceneCounter = 0;
   private clockMs = 0;
   private interval: number;
 
@@ -40,6 +41,7 @@ export class SimulationEngine {
     for (const id of [...this.controllers.keys()]) this.cancelJob(id, 'world_reset', '模拟世界已重置');
     this.state = createInitialWorld();
     this.clockMs = 0;
+    this.sceneCounter = 0;
     this.resourceOwners.clear();
     this.controllers.clear();
     this.continuous.clear();
@@ -54,6 +56,34 @@ export class SimulationEngine {
   }
 
   confirmHandover(jobId: string, accepted: boolean) { this.handoverDecisions.get(jobId)?.(accepted); }
+
+  addLocation(input: { name: string; x: number; y: number; theta: number }) {
+    const name = input.name.trim();
+    if (!name) throw new Error('位置点名称不能为空');
+    if (![input.x, input.y, input.theta].every(Number.isFinite)) throw new Error('位置点坐标和朝向必须是有限数');
+    if (matchName(this.state.locations, name)) throw new Error(`位置点名称“${name}”已存在`);
+    if (pointBlocked(input.x, input.y)) throw new Error('位置点位于地图外、障碍物内或安全膨胀区');
+    const location: LocationPoint = { id: `custom-location-${++this.sceneCounter}`, name, aliases: [], x: input.x, y: input.y, theta: input.theta, builtin: false };
+    this.state.locations = [...this.state.locations, location]; this.emit(); this.onEvent({ level: 'success', type: 'location_created', summary: `已新增位置点：${name}`, detail: location }); return location;
+  }
+
+  removeLocation(id: string) {
+    const location = this.state.locations.find((item) => item.id === id); if (!location) throw new Error('位置点不存在'); if (location.builtin) throw new Error('内置位置点不可删除');
+    const route = this.state.routes.find((item) => item.waypointIds.includes(id)); if (route) throw new Error(`位置点正被路线“${route.name}”引用`);
+    this.state.locations = this.state.locations.filter((item) => item.id !== id); this.emit(); this.onEvent({ level: 'info', type: 'location_deleted', summary: `已删除位置点：${location.name}` });
+  }
+
+  addRoute(input: { name: string; waypointIds: string[] }) {
+    const name = input.name.trim(); if (!name) throw new Error('路线名称不能为空'); if (matchName(this.state.routes, name)) throw new Error(`路线名称“${name}”已存在`); if (input.waypointIds.length < 2) throw new Error('路线至少需要两个位置点');
+    if (input.waypointIds.some((id) => !this.state.locations.some((item) => item.id === id))) throw new Error('路线包含不存在的位置点');
+    const route: RouteDefinition = { id: `custom-route-${++this.sceneCounter}`, name, aliases: [], waypointIds: [...input.waypointIds], builtin: false };
+    this.state.routes = [...this.state.routes, route]; this.emit(); this.onEvent({ level: 'success', type: 'route_created', summary: `已保存路线：${name}`, detail: route }); return route;
+  }
+
+  removeRoute(id: string) { const route = this.state.routes.find((item) => item.id === id); if (!route) throw new Error('路线不存在'); if (route.builtin) throw new Error('内置路线不可删除'); this.state.routes = this.state.routes.filter((item) => item.id !== id); this.emit(); this.onEvent({ level: 'info', type: 'route_deleted', summary: `已删除路线：${route.name}` }); }
+
+  navigateToLocation(id: string) { const location = this.state.locations.find((item) => item.id === id); if (!location) return Promise.resolve(failure('navigate_to', this.nextId(), 'not_found', '位置点不存在')); return this.invokeTool('navigate_to', { location: location.name }); }
+  executeRoute(id: string) { const route = this.state.routes.find((item) => item.id === id); if (!route) return Promise.resolve(failure('start_patrol', this.nextId(), 'not_found', '路线不存在')); return this.invokeTool('start_patrol', { route: route.name }); }
 
   async invokeTool(tool: ToolName, args: unknown, callId?: string): Promise<ToolOutput> {
     this.onEvent({ level: 'info', type: 'tool_received', summary: `收到 ${tool}`, detail: args, callId });
@@ -134,7 +164,7 @@ export class SimulationEngine {
     let target: Pose2D; let label: string;
     if (hasLocation) {
       if (typeof args.location !== 'string' || !args.location.trim()) return failure('navigate_to', this.nextId(), 'invalid_arguments', 'location 必须是非空字符串');
-      const location = matchName(LOCATIONS, args.location);
+      const location = matchName(this.state.locations, args.location);
       if (!location) return failure('navigate_to', this.nextId(), 'not_found', `未找到导航地点「${args.location}」`);
       target = { x: location.x, y: location.y, theta: location.theta }; label = `前往${location.name}`;
     } else {
@@ -151,26 +181,29 @@ export class SimulationEngine {
   }
 
   private startPatrol(args: Record<string, unknown>, callId?: string): ToolOutput {
-    if (typeof args.route !== 'string' || !['日常巡视', '日常巡逻', '例行巡视'].includes(args.route.trim()) || Object.keys(args).some((key) => key !== 'route')) return failure('start_patrol', this.nextId(), typeof args.route === 'string' ? 'not_found' : 'invalid_arguments', '仅支持内置路线「日常巡视」');
+    if (typeof args.route !== 'string' || !args.route.trim() || Object.keys(args).some((key) => key !== 'route')) return failure('start_patrol', this.nextId(), 'invalid_arguments', 'route 必须是非空路线名称');
+    const route = matchName(this.state.routes, args.route); if (!route) return failure('start_patrol', this.nextId(), 'not_found', `未找到路线「${args.route}」`);
+    const waypoints = route.waypointIds.map((id) => this.state.locations.find((item) => item.id === id)).filter((item): item is LocationPoint => !!item).map((item) => ({ ...item, aliases: [...item.aliases] }));
+    if (waypoints.length !== route.waypointIds.length || waypoints.length < 2) return failure('start_patrol', this.nextId(), 'execution_failed', `路线「${route.name}」定义无效`);
     let created: ReturnType<SimulationEngine['createJob']>;
-    try { created = this.createJob('start_patrol', '日常巡视', ['locomotion'], callId, true); } catch (error) { const e = error as Cancellation; return failure('start_patrol', this.nextId(), e.code, e.message); }
+    try { created = this.createJob('start_patrol', route.name, ['locomotion'], callId, true); } catch (error) { const e = error as Cancellation; return failure('start_patrol', this.nextId(), e.code, e.message); }
     this.continuous.add(created.job.id);
-    void this.patrolLoop(created.job, created.controller.signal);
-    return { ok: true, status: 'running', tool: 'start_patrol', job_id: created.job.id, error_code: null, message: '日常巡视已开始', data: { route: '日常巡视', waypoint_count: 4 } };
+    void this.patrolLoop(created.job, route.name, waypoints, created.controller.signal);
+    return { ok: true, status: 'running', tool: 'start_patrol', job_id: created.job.id, error_code: null, message: `${route.name}已开始`, data: { route: route.name, waypoint_count: waypoints.length } };
   }
 
-  private async patrolLoop(job: JobState, signal: AbortSignal) {
+  private async patrolLoop(job: JobState, routeName: string, waypoints: LocationPoint[], signal: AbortSignal) {
     let index = 0, lap = 0;
     try {
       while (!signal.aborted) {
-        const location = LOCATIONS.find((item) => item.id === PATROL_ROUTE[index])!;
+        const location = waypoints[index];
         this.updateJob(job.id, { label: `巡视 · ${location.name}`, stage: `前往 ${location.name}`, progress: null });
         await this.moveTo(job, location, signal);
         this.onEvent({ level: 'success', type: 'patrol_waypoint', summary: `已到达巡逻点：${location.name}`, jobId: job.id });
         this.updateJob(job.id, { stage: `${location.name}停留 3 秒` });
         await sleep(3000, signal);
-        index = (index + 1) % PATROL_ROUTE.length; if (!index) lap++;
-        this.updateJob(job.id, { label: `日常巡视 · 第 ${lap + 1} 圈` });
+        index = (index + 1) % waypoints.length; if (!index) lap++;
+        this.updateJob(job.id, { label: `${routeName} · 第 ${lap + 1} 圈` });
       }
     } catch (error) { if (!signal.aborted) this.failContinuous(job, error); }
   }
@@ -231,7 +264,7 @@ export class SimulationEngine {
     if (!object.graspable) return failure('pick_and_place', this.nextId(), 'object_not_graspable', `${object.name}不可抓取`);
     const placement = matchName(PLACEMENTS.map((item) => ({ ...item, aliases: item.aliases })), args.target_location);
     if (!placement) {
-      const ordinary = matchName(LOCATIONS, args.target_location);
+      const ordinary = matchName(this.state.locations, args.target_location);
       return failure('pick_and_place', this.nextId(), ordinary ? 'target_not_placeable' : 'not_found', ordinary ? `${ordinary.name}不是可放置表面` : `未找到放置位置「${args.target_location}」`);
     }
     const hand = !this.state.robot.leftHand ? 'left' : !this.state.robot.rightHand ? 'right' : null;
