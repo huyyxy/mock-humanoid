@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Bot, Box, ChevronRight, CircleStop, Code2, Expand, Map, MapPinned, MessageSquareText, Mic, MicOff, PanelRight, Radar, RotateCcw, Send, Settings2, Unplug, Wifi, X } from 'lucide-react';
 import { Map2D } from './components/Map2D';
 import { SceneControl } from './components/SceneControl';
+import { BUILTIN_TOOLS } from './data/tools';
 import { useWorld } from './hooks/useWorld';
 import type { AudioCaptureOptions, AudioCaptureSettings } from './realtime/audio';
 import { StardustRealtimeClient } from './realtime/client';
@@ -13,7 +14,7 @@ export type VoiceMode = 'server_vad' | 'push_to_talk';
 export const DEFAULT_AUDIO_OPTIONS: AudioCaptureOptions = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
 export const DEFAULT_SESSION: Record<string, unknown> = {
-  model: { provider: 'tiwater', name: 'stardust-8.0', ext_config: { v8: { enabled: true, max_plan_steps: 4, max_retry_count: 1, enable_companion_narration: true } }, modalities: ['text', 'audio'], instructions: '你是一个人形机器人助手。请根据用户请求调用合适的机器人技能。', tools: [], tool_choice: 'auto', temperature: 0.8, max_response_output_tokens: 4096 },
+  model: { provider: 'tiwater', name: 'stardust-8.0', ext_config: { v8: { enabled: true, max_plan_steps: 4, max_retry_count: 1, enable_companion_narration: true } }, modalities: ['text', 'audio'], instructions: '你是一个人形机器人助手。请根据用户请求调用合适的机器人技能。', tools: structuredClone(BUILTIN_TOOLS), tool_choice: 'auto', temperature: 0.8, max_response_output_tokens: 4096 },
   speech: { voice: 'verse', output_audio_format: 'pcm16' },
   hearing: { input_audio_format: 'pcm16', turn_detection: { type: 'server_vad', threshold: .05, prefix_padding_ms: 300, silence_duration_ms: 200 } },
 };

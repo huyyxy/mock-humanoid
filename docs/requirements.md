@@ -1,7 +1,7 @@
 # mock-humanoid 需求文档
 
 状态：Draft
-版本：0.10
+版本：0.12
 日期：2026-07-22
 
 ## 1. 文档目的
@@ -242,7 +242,7 @@ idle ──连接──> validating ──成功──> connecting ──session
 
 ### 7.2 session.update JSON 编辑器
 
-- 初始内容为项目内置的 Stardust session 示例对象。
+- 初始内容为项目内置的 Stardust session 示例对象；其 `model.tools` 必须直接包含 [内置 Realtime tools 契约](./tool-schemas.md#3-最终-session-中的完整-tools-定义) 中的 8 个完整定义，不能显示为空数组或只显示名称占位。
 - 用户可以编辑完整 session 对象。
 - 点击“格式化”只执行 JSON 解析和缩进格式化。
 - 点击“应用”时只执行以下本地校验：
@@ -256,9 +256,9 @@ idle ──连接──> validating ──成功──> connecting ──session
 - 应用失败时保留编辑器内容和上一次已生效配置。
 - 编辑器内容、已生效配置和错误在刷新后全部恢复初始值。
 
-内置初始示例应至少包含以下结构；实现可以随 Stardust 协议升级示例值，但不得移除页面编辑能力：
+内置初始示例由以下 session 骨架和 `tool-schemas.md` 第 3 节的完整 tools 数组组成。下面使用 JSONC 注释避免复制并形成第二份 tools 定义；页面实际显示的内容必须是无注释的合法 JSON，并将 8 个完整对象展开在数组中。实现可以随 Stardust 协议升级示例值，但不得移除页面编辑能力：
 
-```json
+```jsonc
 {
   "model": {
     "provider": "tiwater",
@@ -273,7 +273,11 @@ idle ──连接──> validating ──成功──> connecting ──session
     },
     "modalities": ["text", "audio"],
     "instructions": "你是一个人形机器人助手。请根据用户请求调用合适的机器人技能。",
-    "tools": [],
+    "tools": [
+      // 按 tool-schemas.md 第 3 节依次展开 navigate_to、start_patrol、
+      // follow_person、search_object、pick_and_place、hand_over、
+      // execute_action、set_expression 的完整定义
+    ],
     "tool_choice": "auto",
     "temperature": 0.8,
     "max_response_output_tokens": 4096
@@ -296,7 +300,7 @@ idle ──连接──> validating ──成功──> connecting ──session
 
 ### 7.3 内置工具合并
 
-机器人 8 个本地工具是系统能力，不要求用户手工写入 session JSON。
+机器人 8 个本地工具是系统能力。项目内置的缺省 session JSON 为了可见、可检查和可复制，必须显式包含全部 8 个完整定义；用户自行清空或删除 `model.tools` 时，运行时仍负责补齐。
 
 内置 tools 的定义、去重、合并和注册顺序全部以 [内置 Realtime tools 契约](./tool-schemas.md#4-合并与注册) 为唯一事实来源。唯一允许的路径是：先从用户 session 副本中移除同名项，再通过 `addTool` 或行为等价且只注册一次的客户端工具接口注册 handler，由 SDK 在发送 session 时追加客户端 tools。
 
@@ -304,7 +308,7 @@ idle ──连接──> validating ──成功──> connecting ──session
 
 - 不得再手工把同一批内置定义追加到 `model.tools`，避免一份 tool 出现两次。
 - 用户 JSON 中的非同名 tools 和 `tool_choice` 保持不变；未提供 `tool_choice` 时默认 `auto`。
-- 用户编辑器内容不因运行时去重而改写。
+- 用户编辑器内容不因运行时去重而改写；与内置定义 JSON 等价的同名项属于缺省展示，不产生 `builtin_tool_replaced` warning，只有内容不同的同名项才产生 warning。
 - 客户端重建或重连时，在连接前重新完成一次注册；同一个客户端实例不得重复注册。
 - 每个被内置定义替换的同名用户 tool 都在任务与事件面板显示一条 `warning` 级 `builtin_tool_replaced` 事件，包含 tool 名称；不使用阻塞 toast，也不只写浏览器控制台。
 
@@ -752,6 +756,7 @@ URDF 或任一必需 mesh 加载失败时：
 ### 12.4 一致性
 
 - 2D 和 3D 使用同一个世界原点、米制单位和朝向约定。
+- 默认 3D 相机下，世界 `+x` 与 `+y` 在屏幕上的方向分别与 2D 的向右、向上保持一致；Three.js 的 Y-up 坐标转换以 `demo-scene.md` 第 2 节为唯一规则，不得直接把世界 `y` 作为未翻转的 scene `z`。
 - 同一动画帧中，两种视图的机器人平面位置偏差不得超过 `0.02m`。
 - 规划路线在 3D 中投影到地面，其节点与 2D 路径节点来自同一数组。
 
@@ -819,13 +824,14 @@ URDF 或任一必需 mesh 加载失败时：
 - [ ] 缺少 `group_id` 或 `robot_id` 时页面可用，但明确阻止连接。
 - [ ] `/api/runtime-config` 符合第 6.4 节结构、返回 `no-store`，且不泄露其他环境变量。
 - [ ] 2D 地图和 3D 点云显示同一初始机器人位置。
+- [ ] 默认相机下，前台、厨房、会议室、展示区及机器人在 2D/3D 中具有一致的上下和左右关系，不出现南北镜像。
 - [ ] 正常状态下 3D 机器人由内置宇树 G1 URDF 和配套 mesh 加载，不出现通用人形替代模型。
 
 ### 16.2 Realtime
 
 - [ ] 连接时 URL 含正确的 `group_id` 和 `robot_id`。
-- [ ] 首次 session 配置已经包含 8 个本地 function tools。
-- [ ] 8 个 tools 与 `tool-schemas.md` 完全一致；同名用户 tool 被替换并产生 warning，非同名 tools 被保留。
+- [ ] 设置抽屉首次打开以及点击“恢复本页初始值”后，缺省 session JSON 的 `model.tools` 均显式展开 8 个本地 function tools，不是空数组或名称占位。
+- [ ] 缺省 JSON 中的 8 个 tools 与 `tool-schemas.md` 完全一致，连接时各发送一次且不产生替换 warning；内容不同的同名用户 tool 被替换并产生 warning，非同名 tools 被保留。
 - [ ] `builtin_tool_replaced` warning 显示在任务与事件面板并包含被替换的 tool 名称，不仅输出到控制台。
 - [ ] 同一客户端重复应用 session 配置不会重复注册或发送内置 tools；新建客户端连接前恰好注册一次。
 - [ ] 用户可以通过语音和文本获得模型回复，并听到实时音频。

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import { BUILTIN_TOOLS, mergeBuiltinTools } from '../src/data/tools';
+import { DEFAULT_SESSION } from '../src/App';
 
 describe('Stardust tool contract', () => {
   it('defines eight unique client tools', () => {
@@ -14,6 +15,17 @@ describe('Stardust tool contract', () => {
     const json = markdown.match(/```json\n([\s\S]*?)\n```/)?.[1];
     expect(json).toBeTruthy();
     expect(JSON.parse(json!)).toEqual(JSON.parse(JSON.stringify(BUILTIN_TOOLS)));
+  });
+
+  it('expands all eight tools in the default session JSON', () => {
+    expect((DEFAULT_SESSION.model as any).tools).toEqual(BUILTIN_TOOLS);
+  });
+
+  it('does not warn when the default session definitions are normalized', () => {
+    const warning = vi.fn();
+    const result = mergeBuiltinTools(DEFAULT_SESSION, warning) as any;
+    expect(warning).not.toHaveBeenCalled();
+    expect(result.model.tools).toEqual(BUILTIN_TOOLS);
   });
 
   it('replaces same-name user tools and preserves other tools', () => {

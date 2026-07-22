@@ -1,7 +1,7 @@
 # mock-humanoid 内置 Realtime tools 契约
 
 状态：Draft
-版本：0.7
+版本：0.8
 日期：2026-07-22
 
 ## 1. 目的与边界
@@ -22,7 +22,7 @@
 
 ## 3. 最终 session 中的完整 tools 定义
 
-最终发送到 Stardust 的 session 中，8 个内置 tool 定义必须与下列 JSON 等价。应用通过 `addTool` 注册 handler 后由 SDK 自动合并这些定义，不直接把它们手工追加到用户 JSON。
+项目内置的缺省 session JSON 和最终发送到 Stardust 的 session 中，8 个内置 tool 定义都必须与下列 JSON 等价。缺省 JSON 显式展开这些定义，便于用户检查和编辑；运行时仍通过 `addTool` 或行为等价的受控注册路径绑定 handler、去重并发送，不能因此重复发送同一 tool。
 
 ```json
 [
@@ -249,7 +249,7 @@
 
 1. 深拷贝用户 session JSON，保持编辑器内容不变。
 2. 用户 session 未提供 `model` 时创建运行时 `model` 对象；未提供 `model.tools` 时在运行时副本中创建空数组，避免 SDK 增量合并时遗留上一版用户 tools。`model` 存在但不是对象，或 `model.tools` 存在但不是数组时，不静默替换用户值，由本次应用/连接流程显示工具注入失败并保持上一份已生效配置。这仍属于运行时错误，不增加编辑器字段校验。
-3. 从 `model.tools` 中移除与上述 8 个名称冲突的项，并为每个冲突记录 `builtin_tool_replaced` warning。
+3. 从 `model.tools` 中移除上述 8 个同名项，交由受控注册路径统一追加：与本节定义 JSON 等价的项视为缺省展示，不记录 warning；内容不同的同名项记录 `builtin_tool_replaced` warning。
 4. 保留其他用户 tools 的原始顺序。
 5. 在新建的 `RealtimeClient` 连接前，通过 `addTool` 注册上述 8 个定义及对应本地 handler。当前 SDK 会在构建 Stardust session 时自动追加这些客户端 tools，因此应用层不得再把它们手工追加到 `model.tools`。
 6. 对同一个 `RealtimeClient` 重复应用 session JSON 时不得再次注册已存在的内置 tools；只有创建新 client 时才重新注册一次。

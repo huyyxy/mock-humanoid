@@ -20,9 +20,9 @@
 
 | 产品主契约 | 场景与资产契约 | Tools 契约 | 兼容状态 |
 |---|---|---|---|
-| `requirements 0.10` | `demo-scene 0.8` | `tool-schemas 0.7` | 当前唯一支持组合 |
+| `requirements 0.12` | `demo-scene 0.9` | `tool-schemas 0.8` | 当前唯一支持组合 |
 
-本组合相对上一版主要修复：按 Hetu Playground 对齐 Server VAD 连续对话与 Client VAD / Push to Talk 双模式，并支持可配置的浏览器 3A。
+本组合包含缺省 session tools 冲突规则，并修复默认相机下 2D/3D 的南北镜像：两种视图统一显示世界 `+y` 向上。
 
 ## 已落地的契约检查
 
@@ -42,8 +42,8 @@
 
 | 文档 | 状态 | 最近更新 |
 |---|---|---|
-| [requirements.md](./requirements.md) | Draft 0.10 | 2026-07-22 |
-| [tool-schemas.md](./tool-schemas.md) | Draft 0.7 | 2026-07-22 |
-| [demo-scene.md](./demo-scene.md) | Draft 0.8 | 2026-07-22 |
+| [requirements.md](./requirements.md) | Draft 0.12 | 2026-07-22 |
+| [tool-schemas.md](./tool-schemas.md) | Draft 0.8 | 2026-07-22 |
+| [demo-scene.md](./demo-scene.md) | Draft 0.9 | 2026-07-22 |
 | [control-panel.md](./control-panel.md) | Draft 0.1 | 2026-07-22 |
 | [voice-input.md](./voice-input.md) | Draft 0.1 | 2026-07-22 |

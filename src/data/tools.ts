@@ -16,6 +16,17 @@ export const BUILTIN_TOOLS = [
 
 export const BUILTIN_TOOL_NAMES = new Set<ToolName>(BUILTIN_TOOLS.map((tool) => tool.name as ToolName));
 
+function jsonEquivalent(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => jsonEquivalent(value, right[index]));
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  const leftRecord = left as Record<string, unknown>; const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord); const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key) && jsonEquivalent(leftRecord[key], rightRecord[key]));
+}
+
 export function mergeBuiltinTools(session: Record<string, unknown>, warning: (name: string) => void) {
   const runtime = structuredClone(session);
   if (runtime.model === undefined) runtime.model = {};
@@ -25,7 +36,11 @@ export function mergeBuiltinTools(session: Record<string, unknown>, warning: (na
   if (!Array.isArray(model.tools)) throw new Error('session.model.tools 必须是数组');
   const userTools = model.tools.filter((tool) => {
     const name = tool && typeof tool === 'object' ? (tool as { name?: unknown }).name : undefined;
-    if (typeof name === 'string' && BUILTIN_TOOL_NAMES.has(name as ToolName)) { warning(name); return false; }
+    if (typeof name === 'string' && BUILTIN_TOOL_NAMES.has(name as ToolName)) {
+      const builtin = BUILTIN_TOOLS.find((candidate) => candidate.name === name);
+      if (!jsonEquivalent(tool, builtin)) warning(name);
+      return false;
+    }
     return true;
   });
   model.tools = [...userTools, ...BUILTIN_TOOLS];
