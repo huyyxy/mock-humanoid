@@ -5,6 +5,7 @@ import URDFLoader from 'urdf-loader';
 import { OBSTACLES } from '../data/scene';
 import type { WorldState } from '../types';
 import { worldThetaToSceneYaw, worldToScene, worldYBoundsToSceneZ } from '../world/coordinates';
+import { rebuildNavigationOverlay } from './navigationOverlay3d';
 
 interface G1SemanticMap {
   left_hand_link: string;
@@ -33,6 +34,7 @@ export function Scene3D({ world }: { world: WorldState }) {
     const ambient = new HemisphereLight('#b8e5ff', '#07101a', 2.2); scene.add(ambient); const key = new DirectionalLight('#d8f3ff', 3); key.position.set(4, 10, 5); key.castShadow = true; scene.add(key);
     for (const o of OBSTACLES) { const mesh = new Mesh(new BoxGeometry(o.maxX - o.minX, o.height, o.maxY - o.minY), new MeshStandardMaterial({ color: '#203548', roughness: .8, metalness: .15 })); const position = worldToScene((o.minX + o.maxX) / 2, (o.minY + o.maxY) / 2, o.height / 2); mesh.position.set(position.x, position.y, position.z); mesh.receiveShadow = true; scene.add(mesh); }
     const pointGeometry = new BufferGeometry(); pointGeometry.setAttribute('position', new Float32BufferAttribute(seededPoints(), 3)); const pointCloud = new Points(pointGeometry, new PointsMaterial({ color: '#3b82a0', size: .025, transparent: true, opacity: .48 })); scene.add(pointCloud);
+    const navigationOverlay = new Group(); navigationOverlay.name = 'navigation-overlay'; scene.add(navigationOverlay); let overlayRevision = -1;
     const robotRoot = new Group(); scene.add(robotRoot); let robot: any; let semantics: G1SemanticMap | undefined; let faceMaterial: MeshStandardMaterial | undefined;
     fetch('/assets/robots/unitree-g1/semantic-map.json').then((response) => {
       if (!response.ok) throw new Error(`semantic-map.json: HTTP ${response.status}`);
@@ -51,7 +53,7 @@ export function Scene3D({ world }: { world: WorldState }) {
     for (const object of world.objects) { const geometry = object.category === 'cup' ? new CylinderGeometry(.07, .06, .14, 16) : object.category === 'bottle' ? new CylinderGeometry(.045, .05, .22, 16) : new BoxGeometry(.16, .04, .12); const color = object.id === 'red-cup' ? '#ef4444' : object.graspable ? '#f6c453' : '#6d8496'; const mesh = new Mesh(geometry, new MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0 })); mesh.castShadow = true; scene.add(mesh); objects.set(object.id, mesh); }
     const resize = () => { const width = host.clientWidth, height = host.clientHeight; renderer.setSize(width, height, false); camera.aspect = width / Math.max(1, height); camera.updateProjectionMatrix(); }; const observer = new ResizeObserver(resize); observer.observe(host); resize();
     const animate = (time: number) => {
-      const state = worldRef.current; const robotPosition = worldToScene(state.robot.pose.x, state.robot.pose.y); robotRoot.position.set(robotPosition.x, robotPosition.y, robotPosition.z); robotRoot.rotation.y = worldThetaToSceneYaw(state.robot.pose.theta);
+      const state = worldRef.current; if (state.revision !== overlayRevision) { rebuildNavigationOverlay(navigationOverlay, state.jobs); overlayRevision = state.revision; } const robotPosition = worldToScene(state.robot.pose.x, state.robot.pose.y); robotRoot.position.set(robotPosition.x, robotPosition.y, robotPosition.z); robotRoot.rotation.y = worldThetaToSceneYaw(state.robot.pose.theta);
       if (faceMaterial) { faceMaterial.emissive.set(state.robot.faceLight.color); faceMaterial.emissiveIntensity = state.robot.faceLight.current_intensity * 3; }
       if (robot && semantics) {
         const moving = state.jobs.some((job) => job.resources.includes('locomotion') && job.status === 'running'); const phase = time * .006;
