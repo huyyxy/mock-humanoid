@@ -78,6 +78,28 @@ describe('simulation engine contract', () => {
     expect(engine.getSnapshot().robot.pose).toEqual({ x: 2, y: 2, theta: 0 });
   });
 
+  it('locally avoids a person without changing the planned path', async () => {
+    for (const person of engine.getSnapshot().people) person.speed = 0;
+    let minimumDistance = Infinity, maximumTraceY = 2; let plannedPath: string | undefined;
+    const unsubscribe = engine.subscribe(() => {
+      const snapshot = engine.getSnapshot(), person = snapshot.people.find((item) => item.id === 'person-li')!;
+      minimumDistance = Math.min(minimumDistance, Math.hypot(snapshot.robot.pose.x - person.pose.x, snapshot.robot.pose.y - person.pose.y));
+      const job = snapshot.jobs.find((item) => item.tool === 'navigate_to');
+      if (job?.path.length) {
+        plannedPath ||= JSON.stringify(job.path);
+        expect(JSON.stringify(job.path)).toBe(plannedPath);
+        maximumTraceY = Math.max(maximumTraceY, ...job.trace.map((point) => point.y));
+      }
+    });
+    const resultPromise = engine.invokeTool('navigate_to', { x: 4, y: 2, theta: 0 });
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect((await resultPromise).status).toBe('succeeded');
+    unsubscribe();
+    expect(minimumDistance).toBeGreaterThanOrEqual(0.65 - 1e-6);
+    expect(maximumTraceY).toBeGreaterThan(2.3);
+    expect(engine.getSnapshot().robot.pose).toEqual({ x: 4, y: 2, theta: 0 });
+  });
+
   it('maps a planner deadline failure to planning_timeout and stops the job', async () => {
     engine.destroy(); engine = new SimulationEngine(() => undefined, taskEvent, () => { throw new PlanningTimeoutError(); });
     const result = await engine.invokeTool('navigate_to', { x: 2, y: 2 });

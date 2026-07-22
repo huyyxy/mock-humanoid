@@ -1,5 +1,6 @@
 import { ACTIONS, EXPRESSIONS, PLACEMENTS, SEARCH_REGIONS, createInitialWorld, matchName, matchObject } from '../data/scene';
 import { isVisible, planPath, PlanningTimeoutError, pointBlocked } from './geometry';
+import { distanceToClosestPerson, PERSON_CLEARANCE, planPersonDetour } from './localAvoidance';
 import type { AppEvent, JobState, LocationPoint, Pose2D, ResourceName, RouteDefinition, ToolName, ToolOutput, WorldState } from '../types';
 
 type EventSink = (event: Omit<AppEvent, 'id' | 'timestamp'>) => void;
@@ -338,22 +339,43 @@ export class SimulationEngine {
     let path: Pose2D[];
     try { path = this.planner(this.state.robot.pose, target); } catch (error) { if (error instanceof PlanningTimeoutError) throw { code: 'planning_timeout', message: error.message }; throw { code: 'unreachable', message: '目标不可达' }; }
     const lengths = path.slice(1).map((point, index) => Math.hypot(point.x - path[index].x, point.y - path[index].y));
-    const total = lengths.reduce((sum, length) => sum + length, 0); let travelled = 0; const started = this.clockMs;
+    const total = lengths.reduce((sum, length) => sum + length, 0); let completedNominal = 0; let reportedProgress = progressRange[0]; const started = this.clockMs;
     this.updateJob(job.id, { path, trace: [{ ...this.state.robot.pose }], stage: '导航中' });
-    let traceStep = 0;
+    let traceStep = 0; const preferredSides = new Map<string, -1 | 1>();
     for (let i = 1; i < path.length; i++) {
-      const from = { ...this.state.robot.pose }, to = path[i], length = Math.hypot(to.x - from.x, to.y - from.y); let segment = 0;
-      while (segment < length) {
+      const nominalFrom = path[i - 1], to = path[i], nominalLength = lengths[i - 1];
+      const nominalUx = nominalLength ? (to.x - nominalFrom.x) / nominalLength : 0, nominalUy = nominalLength ? (to.y - nominalFrom.y) / nominalLength : 0;
+      let detourWaypoints: Pose2D[] = [];
+      while (Math.hypot(to.x - this.state.robot.pose.x, to.y - this.state.robot.pose.y) > 1e-4) {
         if (signal.aborted) throw signal.reason;
         if (this.clockMs - started > timeoutMs) throw { code: 'navigation_timeout', message: '移动超过时间上限' };
-        const step = Math.min(0.6 * 0.05, length - segment); segment += step; travelled += step;
-        const ratio = length ? segment / length : 1;
-        this.state.robot.pose = { x: from.x + (to.x - from.x) * ratio, y: from.y + (to.y - from.y) * ratio, theta: Math.atan2(to.y - from.y, to.x - from.x) };
+
+        if (!detourWaypoints.length) {
+          const detour = planPersonDetour(this.state.robot.pose, to, this.state.people, preferredSides);
+          if (detour) { preferredSides.set(detour.personId, detour.side); detourWaypoints = detour.waypoints; }
+        }
+        const movementTarget = detourWaypoints[0] || to;
+        const moveX = movementTarget.x - this.state.robot.pose.x, moveY = movementTarget.y - this.state.robot.pose.y, moveLength = Math.hypot(moveX, moveY);
+        if (moveLength < 1e-4) { detourWaypoints.shift(); continue; }
+        const step = Math.min(0.6 * 0.05, moveLength);
+        const candidate = { x: this.state.robot.pose.x + moveX / moveLength * step, y: this.state.robot.pose.y + moveY / moveLength * step };
+        const currentPersonDistance = distanceToClosestPerson(this.state.robot.pose, this.state.people);
+        const candidatePersonDistance = distanceToClosestPerson(candidate, this.state.people);
+        if (candidatePersonDistance < PERSON_CLEARANCE && candidatePersonDistance <= currentPersonDistance + 1e-6) {
+          const detour = planPersonDetour(this.state.robot.pose, to, this.state.people, preferredSides);
+          if (detour) { preferredSides.set(detour.personId, detour.side); detourWaypoints = detour.waypoints; }
+          await sleep(50, signal); continue;
+        }
+        this.state.robot.pose = { ...candidate, theta: Math.atan2(moveY, moveX) };
+        if (step >= moveLength - 1e-6 && detourWaypoints.length) detourWaypoints.shift();
         const trace = this.state.jobs.find((item) => item.id === job.id)?.trace || []; traceStep++;
-        const progress = progressRange[0] + (progressRange[1] - progressRange[0]) * (total ? travelled / total : 1);
-        this.updateJob(job.id, { progress, trace: traceStep % 4 === 0 ? [...trace, { ...this.state.robot.pose }] : trace });
+        const projection = Math.max(0, Math.min(nominalLength, (this.state.robot.pose.x - nominalFrom.x) * nominalUx + (this.state.robot.pose.y - nominalFrom.y) * nominalUy));
+        const progress = progressRange[0] + (progressRange[1] - progressRange[0]) * (total ? (completedNominal + projection) / total : 1);
+        reportedProgress = Math.max(reportedProgress, progress);
+        this.updateJob(job.id, { progress: reportedProgress, trace: traceStep % 4 === 0 ? [...trace, { ...this.state.robot.pose }] : trace });
         await sleep(50, signal);
       }
+      completedNominal += nominalLength;
     }
     this.state.robot.pose = { ...target }; this.emit();
   }
