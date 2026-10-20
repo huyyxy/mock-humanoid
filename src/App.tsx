@@ -1,7 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Bot, Box, ChevronRight, CircleStop, Code2, Expand, Map, MapPinned, MessageSquareText, Mic, MicOff, PanelRight, Radar, RotateCcw, Send, Settings2, Unplug, Wifi, X } from 'lucide-react';
 import { Map2D } from './components/Map2D';
 import { SceneControl } from './components/SceneControl';
+import { isConversationNearBottom, scrollConversationToLatest } from './components/conversationScroll';
 import { BUILTIN_TOOLS } from './data/tools';
 import { useWorld } from './hooks/useWorld';
 import type { AudioCaptureOptions, AudioCaptureSettings } from './realtime/audio';
@@ -33,6 +34,8 @@ export default function App() {
   const [events, setEvents] = useState<AppEvent[]>([]); const [messages, setMessages] = useState<ChatMessage[]>([]); const [runtime, setRuntime] = useState<RuntimeConfig>(); const [status, setStatus] = useState<ConnectionStatus>('idle'); const [connectionError, setConnectionError] = useState('');
   const [viewMode, setViewMode] = useState<'2d' | '3d' | 'both'>('both'); const [settingsOpen, setSettingsOpen] = useState(false); const [panel, setPanel] = useState<'chat' | 'control' | 'events'>('chat'); const [session, setSession] = useState<Record<string, unknown>>(structuredClone(DEFAULT_SESSION)); const [input, setInput] = useState(''); const [micOn, setMicOn] = useState(false); const [voiceMode, setVoiceMode] = useState<VoiceMode>('server_vad'); const [audioOptions, setAudioOptions] = useState<AudioCaptureOptions>(DEFAULT_AUDIO_OPTIONS); const [levels, setLevels] = useState({ input: 0, output: 0 });
   const clientRef = useRef<StardustRealtimeClient | undefined>(undefined);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followLatestMessageRef = useRef(true);
   const pttHeldRef = useRef(false); const pttStartRef = useRef<Promise<boolean> | undefined>(undefined);
   const addEvent = useCallback((value: Omit<AppEvent, 'id' | 'timestamp'>) => setEvents((items) => [...items, { ...value, id: crypto.randomUUID(), timestamp: Date.now() }].slice(-200)), []);
   const upsertMessage = useCallback((message: ChatMessage) => setMessages((items) => { const index = items.findIndex((item) => item.id === message.id); if (index < 0) return [...items, message]; const next = [...items]; next[index] = { ...next[index], ...message }; return next; }), []);
@@ -51,6 +54,10 @@ export default function App() {
       onAudioLevel: (kind, level) => setLevels((value) => ({ ...value, [kind]: level })),
     }); clientRef.current = client; return () => client.disconnect();
   }, [runtime, addEvent, upsertMessage, engine]);
+  useLayoutEffect(() => {
+    const element = messagesRef.current;
+    if (panel === 'chat' && element && followLatestMessageRef.current) scrollConversationToLatest(element);
+  }, [messages, panel]);
 
   const connect = async () => {
     if (!clientRef.current || runtime?.missingRequired.length) return;
@@ -92,9 +99,9 @@ export default function App() {
         </div>
       </section>
       <aside className="side-column">
-        <div className="side-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquareText size={15} />对话</button><button className={panel === 'control' ? 'active' : ''} onClick={() => setPanel('control')}><MapPinned size={15} />场景控制</button><button className={panel === 'events' ? 'active' : ''} onClick={() => setPanel('events')}><PanelRight size={15} />任务与事件<span className="count">{events.length}</span></button></div>
+        <div className="side-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => { followLatestMessageRef.current = true; setPanel('chat'); }}><MessageSquareText size={15} />对话</button><button className={panel === 'control' ? 'active' : ''} onClick={() => setPanel('control')}><MapPinned size={15} />场景控制</button><button className={panel === 'events' ? 'active' : ''} onClick={() => setPanel('events')}><PanelRight size={15} />任务与事件<span className="count">{events.length}</span></button></div>
         {panel === 'chat' ? <>
-          <div className="messages">{messages.length ? messages.map((message) => <div key={message.id} className={`message ${message.role}`}><div className="message-meta"><span>{message.role === 'user' ? 'YOU' : message.role === 'assistant' ? 'STARDUST' : message.role === 'tool' ? 'FUNCTION' : 'SYSTEM'}</span><time>{relativeTime(message.timestamp)}</time></div><p>{message.text}{message.streaming && <span className="typing-caret" />}</p></div>) : <div className="empty-state"><div><MessageSquareText size={26} /></div><h3>开始与 G1 对话</h3><p>连接 Stardust 后，使用语音或文本下达导航、搜索和操作任务。</p><div className="suggestions"><span>“去厨房看看”</span><span>“把杯子放到餐桌”</span><span>“开心一点”</span></div></div>}</div>
+          <div className="messages" ref={messagesRef} onScroll={(event) => { followLatestMessageRef.current = isConversationNearBottom(event.currentTarget); }}>{messages.length ? messages.map((message) => <div key={message.id} className={`message ${message.role}`}><div className="message-meta"><span>{message.role === 'user' ? 'YOU' : message.role === 'assistant' ? 'STARDUST' : message.role === 'tool' ? 'FUNCTION' : 'SYSTEM'}</span><time>{relativeTime(message.timestamp)}</time></div><p>{message.text}{message.streaming && <span className="typing-caret" />}</p></div>) : <div className="empty-state"><div><MessageSquareText size={26} /></div><h3>开始与 G1 对话</h3><p>连接 Stardust 后，使用语音或文本下达导航、搜索和操作任务。</p><div className="suggestions"><span>“去厨房看看”</span><span>“把杯子放到餐桌”</span><span>“开心一点”</span></div></div>}</div>
           <div className="composer"><textarea value={input} disabled={status !== 'connected'} placeholder={status === 'connected' ? '给机器人发送消息…' : '连接 Stardust 后可输入'} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendText(); } }} /><div className="composer-actions">{voiceMode === 'server_vad' ? <><button className={`mic-button ${micOn ? 'active' : ''}`} aria-label={micOn ? '暂停持续聆听' : '恢复持续聆听'} title={micOn ? '暂停持续聆听' : '恢复持续聆听'} disabled={status !== 'connected'} onClick={toggleMic}>{micOn ? <Mic size={17} /> : <MicOff size={17} />}<span className="level"><i style={{ transform: `scaleX(${Math.min(1, levels.input * 8)})` }} /></span></button><span className={`mic-status ${micOn && levels.input >= .008 ? 'speaking' : ''}`}>{micOn ? 'Server VAD · 持续聆听' : 'Server VAD · 已暂停'}</span></> : <button className={`ptt-button ${micOn ? 'active' : ''}`} aria-label="按住说话" disabled={status !== 'connected'} onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); startPushToTalk(); }} onPointerUp={(event) => { event.preventDefault(); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); void stopPushToTalk(); }} onPointerCancel={() => void stopPushToTalk()} onKeyDown={(event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); startPushToTalk(); } }} onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); void stopPushToTalk(); } }}>{micOn ? <Mic size={16} /> : <MicOff size={16} />}<span>{micOn ? '松开发送' : '按住说话'}</span><span className="level"><i style={{ transform: `scaleX(${Math.min(1, levels.input * 8)})` }} /></span></button>}<button className="send-button" disabled={status !== 'connected' || !input.trim()} onClick={sendText}><Send size={17} /></button></div></div>
         </> : panel === 'control' ? <SceneControl world={world} engine={engine} /> : <div className="events">{events.length ? [...events].reverse().map((event) => <div className={`event ${event.level}`} key={event.id}><span className="event-line" /><div><div className="event-meta"><time>{relativeTime(event.timestamp)}</time><code>{event.type}</code></div><p>{event.summary}</p>{event.jobId && <small>{event.jobId}</small>}</div><ChevronRight size={14} /></div>) : <div className="empty-state compact"><Radar size={25} /><h3>暂无事件</h3><p>连接和机器人任务事件会显示在这里。</p></div>}</div>}
       </aside>

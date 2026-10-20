@@ -20,9 +20,9 @@
 
 | 产品主契约 | 场景与资产契约 | Tools 契约 | 兼容状态 |
 |---|---|---|---|
-| `requirements 0.13` | `demo-scene 0.10` | `tool-schemas 0.8` | 当前唯一支持组合 |
+| `requirements 0.15` | `demo-scene 0.10` | `tool-schemas 0.8` | 当前唯一支持组合 |
 
-本组合包含缺省 session tools 冲突规则、默认相机下 2D/3D 的南北方向统一，以及不改变规划虚线的人物动态局部避障。
+本组合包含缺省 session tools 冲突规则、默认相机下 2D/3D 的南北方向统一、不改变规划虚线的人物动态局部避障、长时间导航下的 3D GPU 资源复用与 WebGL 上下文恢复，以及固定视口和独立对话滚动规则。
 
 ## 已落地的契约检查
 
@@ -42,7 +42,7 @@
 
 | 文档 | 状态 | 最近更新 |
 |---|---|---|
-| [requirements.md](./requirements.md) | Draft 0.13 | 2026-07-22 |
+| [requirements.md](./requirements.md) | Draft 0.15 | 2026-07-22 |
 | [tool-schemas.md](./tool-schemas.md) | Draft 0.8 | 2026-07-22 |
 | [demo-scene.md](./demo-scene.md) | Draft 0.10 | 2026-07-22 |
 | [control-panel.md](./control-panel.md) | Draft 0.1 | 2026-07-22 |
