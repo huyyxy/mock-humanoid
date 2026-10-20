@@ -53,6 +53,28 @@ pnpm start
 
 ## Docker
 
+使用脚本构建并启动（镜像仓库与 stardust-all 中其他项目保持一致）：
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写实际的 Stardust group ID 和 robot ID
+./docker_build.sh -v 1.0.0
+./docker_run.sh -v 1.0.0
+```
+
+`docker_build.sh` 支持 `-m build|push|all`（默认 `build`），上传时需提供 `-p <仓库密码>`。镜像名称为 `ccr.ccs.tencentyun.com/huyyxy/mock-humanoid:<version>`。
+
+`docker_run.sh` 支持 `-m pull|run|all`（默认 `run`）、`-n <容器名称>` 和 `-p <宿主机端口>`（默认 `3000`）。脚本可在任意目录调用，运行时只读挂载项目目录下的 `.env`，容器内端口固定为 `3000`，不受 `.env` 中 `PORT` 的影响。启动时会停止并删除同名容器，再以自动重启策略运行新容器。没有 `.env` 也可以启动并查看模拟场景，但无法连接 Realtime。
+
+```bash
+# 构建并推送
+./docker_build.sh -v 1.0.0 -m all -p '<仓库密码>'
+# 拉取并运行，使用自定义容器名和端口
+./docker_run.sh -v 1.0.0 -m all -n my-mock-humanoid -p 8080
+```
+
+也可以直接使用 Docker 命令：
+
 ```bash
 docker build -t mock-humanoid .
 docker run --rm -p 3000:3000 \
